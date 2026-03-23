@@ -17,3 +17,5 @@ venv/
 files/seizure-detection-pipeline/data/
 files/seizure-detection-pipeline/models/
 files/seizure-detection-pipeline/venv/
+node_modules/
+*.DS_Store
