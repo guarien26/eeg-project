@@ -305,3 +305,98 @@ if __name__ == "__main__":
         print()
 
     print("\nFeature extraction test passed.")
+
+# ============================================================
+# Fast vectorized clinical biomarkers for seizure detection
+# ============================================================
+import numpy as np
+
+def compute_biomarkers_batch(windows, sfreq=250):
+    """
+    Vectorized biomarker extraction for all windows at once.
+    Input: windows shape (n_windows, n_samples, n_channels)
+    Output: (n_windows, 69) feature array
+    
+    Per channel (7 + 4 = 11 features × 6 channels = 66):
+      RMS, line_length, zero_crossing_rate, spectral_entropy,
+      peak_freq, rhythmicity, sharpness,
+      delta_power, theta_power, alpha_power, beta_power
+    Cross-channel (3): L/R symmetry for 3 pairs
+    Total: 66 + 3 = 69
+    """
+    n_win, n_samp, n_ch = windows.shape
+    # Auto-fix transposed windows: if channels > samples, swap axes
+    if n_ch > n_samp:
+        windows = np.transpose(windows, (0, 2, 1))
+        n_win, n_samp, n_ch = windows.shape
+    all_features = []
+    
+    for ch in range(n_ch):
+        x = windows[:, :, ch]  # (n_win, n_samp)
+        
+        # 1. RMS amplitude
+        rms = np.sqrt(np.mean(x**2, axis=1))
+        
+        # 2. Line length
+        ll = np.mean(np.abs(np.diff(x, axis=1)), axis=1)
+        
+        # 3. Zero crossing rate
+        x_centered = x - np.mean(x, axis=1, keepdims=True)
+        zcr = np.mean(np.abs(np.diff(np.sign(x_centered), axis=1)), axis=1) / 2
+        
+        # 4-5. Spectral entropy + peak freq via FFT (FAST, no scipy.welch)
+        fft_vals = np.fft.rfft(x, axis=1)
+        psd = np.abs(fft_vals)**2
+        freqs = np.fft.rfftfreq(n_samp, d=1.0/sfreq)
+        psd_norm = psd / (psd.sum(axis=1, keepdims=True) + 1e-10)
+        spectral_ent = -np.sum(psd_norm * np.log2(psd_norm + 1e-10), axis=1)
+        peak_freq = freqs[np.argmax(psd, axis=1)]
+        
+        # 6. Rhythmicity (max autocorr in 2-25 Hz range)
+        min_lag = int(sfreq / 25)  # 10
+        max_lag = int(sfreq / 2)   # 125
+        # Use first 500 samples for speed
+        x_short = x_centered[:, :min(500, n_samp)]
+        # Compute autocorrelation at specific lags only
+        var = np.sum(x_short**2, axis=1) + 1e-10
+        rhyth_vals = []
+        for lag in range(min_lag, min(max_lag, x_short.shape[1]), 5):  # stride 5 for speed
+            shifted = np.sum(x_short[:, :x_short.shape[1]-lag] * x_short[:, lag:], axis=1)
+            rhyth_vals.append(shifted / var)
+        if rhyth_vals:
+            rhythmicity = np.max(np.stack(rhyth_vals, axis=1), axis=1)
+        else:
+            rhythmicity = np.zeros(n_win)
+        
+        # 7. Sharpness (mean abs 2nd derivative)
+        sharpness = np.mean(np.abs(np.diff(x, n=2, axis=1)), axis=1)
+        
+        # 8-11. Band powers (delta, theta, alpha, beta)
+        total_power = psd.sum(axis=1, keepdims=True) + 1e-10
+        bands = [(0.5, 4), (4, 8), (8, 13), (13, 30)]
+        band_powers = []
+        for low, high in bands:
+            mask = (freqs >= low) & (freqs < high)
+            bp = psd[:, mask].sum(axis=1, keepdims=True) / total_power
+            band_powers.append(bp)
+        
+        ch_features = np.column_stack([rms, ll, zcr, spectral_ent, peak_freq, 
+                                        rhythmicity, sharpness] + 
+                                       [bp.flatten() for bp in band_powers])
+        all_features.append(ch_features)
+    
+    # Cross-channel symmetry (3 L/R pairs)
+    pairs = [(0, 1), (2, 3), (4, 5)]
+    for l, r in pairs:
+        if l < n_ch and r < n_ch:
+            xl = windows[:, :, l]
+            xr = windows[:, :, r]
+            # Vectorized correlation
+            xl_c = xl - xl.mean(axis=1, keepdims=True)
+            xr_c = xr - xr.mean(axis=1, keepdims=True)
+            num = np.sum(xl_c * xr_c, axis=1)
+            den = np.sqrt(np.sum(xl_c**2, axis=1) * np.sum(xr_c**2, axis=1)) + 1e-10
+            corr = (num / den).reshape(-1, 1)
+            all_features.append(np.nan_to_num(corr))
+    
+    return np.hstack(all_features).astype(np.float32)

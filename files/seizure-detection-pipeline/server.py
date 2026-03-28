@@ -499,7 +499,7 @@ def main():
     )
     parser.add_argument(
         "--model", type=str,
-        default="models/seizure_predictor_v3.keras",
+        default="models/seizure_detector_v7.keras",
         help="Path to trained .keras model",
     )
     parser.add_argument(

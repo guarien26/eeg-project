@@ -19,3 +19,9 @@ files/seizure-detection-pipeline/models/
 files/seizure-detection-pipeline/venv/
 node_modules/
 *.DS_Store
+files/seizure-detection-pipeline/urls.txt
+files/seizure-detection-pipeline/urls_chb03.txt
+files/seizure-detection-pipeline/wget-log
+files/seizure-detection-pipeline/preprocess_v1_backup.py
+files/seizure-detection-pipeline/download_data.sh
+files/seizure-detection-pipeline-README.md

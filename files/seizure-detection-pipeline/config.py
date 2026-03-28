@@ -123,7 +123,7 @@ SEIZURE_THRESHOLD = 0.5      # probability above this → seizure detected
 MIN_SENSITIVITY = 0.95       # target: catch 95% of seizures
 MAX_FALSE_ALARM_RATE = 1.0   # max false alarms per hour
 # Pre-ictal prediction settings
-PREICTAL_SECONDS = 120       # 5 minutes before seizure = pre-ictal window
+PREICTAL_SECONDS = 0       # 5 minutes before seizure = pre-ictal window
 POSTICTAL_BUFFER = 30        # 30s after seizure end
 PREICTAL_BUFFER = 30         # 30s gap before pre-ictal
 PREDICTION_MODE = "binary"   # pre-ictal+ictal vs interictal
